@@ -1,0 +1,71 @@
+# This is the GitHub Actions workflow. It lives here rather than in
+# .github/workflows/ because remote tooling is not allowed to write
+# workflow files directly. bootstrap.ps1 (or bootstrap.sh) moves it
+# into .github/workflows/ci.yml before the first commit.
+#
+# To do it by hand instead:
+#   mkdir .github\workflows
+#   move ci-workflow.yml .github\workflows\ci.yml
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Playwright
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Run the suites
+        run: npm test
+
+  syntax:
+    name: Static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check the sync server parses
+        run: node --check sync/server.js
+
+      - name: Check the app's inline script parses
+        run: |
+          node -e "
+            const fs = require('fs');
+            const html = fs.readFileSync('site/keyring.html', 'utf8');
+            const m = html.match(/<script>([\s\S]*)<\/script>/);
+            if (!m) { console.error('no inline script found'); process.exit(1); }
+            fs.writeFileSync('/tmp/app.js', m[1]);
+          "
+          node --check /tmp/app.js
+
+      - name: Validate the compose file
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Refuse relative bind mounts
+        run: |
+          if grep -nE '^\s*-\s*\./' docker-compose.yml; then
+            echo "::error::Relative bind mounts do not work in Portainer's web editor"
+            exit 1
+          fi

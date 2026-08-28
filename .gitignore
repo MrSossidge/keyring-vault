@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------
+# Never commit a vault, an export, or anything that smells like one
+# ---------------------------------------------------------------
+vault.json
+versions/
+keyring-backup-*.json
+keyring-PLAINTEXT-*.json
+*.vault.json
+.env
+.env.*
+
+# Node
+node_modules/
+npm-debug.log*
+package-lock.json
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------
+# Local operational notes — internal infrastructure detail.
+# Deliberately not published: these describe host addressing,
+# accounts, and current security posture.
+# ---------------------------------------------------------------
+KEYRING-HANDOVER.md
+*-HANDOVER.md
+handover/
+runbook-notes.md

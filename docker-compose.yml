@@ -1,0 +1,87 @@
+# Keyring — Portainer stack (Community Edition friendly)
+#
+#   keyring        Caddy. HTTPS on 8121, serves the page, proxies /api.
+#   keyring-sync   ~200 lines of Node, no dependencies. Stores one file:
+#                  the AES-GCM ciphertext the browser produced. It cannot
+#                  read your keys and refuses an unencrypted vault.
+#
+# ---------------------------------------------------------------------
+# BEFORE DEPLOYING: the three files must exist on the Docker host.
+# Portainer's web editor does NOT support relative bind mounts, so the
+# paths below are absolute and must match where you put the files.
+#
+#   ssh into the host, then:
+#     sudo mkdir -p /opt/keyring/{site,sync}
+#   copy from your workstation:
+#     scp keyring.html  user@10.0.0.20:/tmp/ && ssh user@10.0.0.20 sudo mv /tmp/keyring.html /opt/keyring/site/
+#     scp server.js     user@10.0.0.20:/tmp/ && ssh user@10.0.0.20 sudo mv /tmp/server.js    /opt/keyring/sync/
+#     scp Caddyfile     user@10.0.0.20:/tmp/ && ssh user@10.0.0.20 sudo mv /tmp/Caddyfile    /opt/keyring/
+#
+#   You should end up with:
+#     /opt/keyring/Caddyfile
+#     /opt/keyring/sync/server.js
+#     /opt/keyring/site/keyring.html
+#
+# Then: Portainer -> Stacks -> Add stack -> Web editor -> paste this ->
+# Deploy. Browse to https://<host>:8121 and accept the certificate once.
+#
+# Keeping them elsewhere? Change the three /opt/keyring paths below.
+# ---------------------------------------------------------------------
+
+services:
+  keyring:
+    image: caddy:2-alpine
+    container_name: keyring
+    restart: unless-stopped
+    ports:
+      # TCP for HTTP/1.1 and HTTP/2, UDP for Caddy's HTTP/3 listener.
+      - "8121:8121"
+      - "8121:8121/udp"
+    volumes:
+      - /opt/keyring/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/keyring/site:/srv:ro
+      - keyring_caddy_data:/data
+      - keyring_caddy_config:/config
+    depends_on:
+      - keyring-sync
+    networks:
+      - keyring
+
+  keyring-sync:
+    image: node:22-alpine
+    container_name: keyring-sync
+    restart: unless-stopped
+    working_dir: /app
+    command: node /app/server.js
+    volumes:
+      - /opt/keyring/sync:/app:ro
+      - keyring_vault:/data          # vault.json + version snapshots
+    environment:
+      # Optional shared token. Empty = open endpoint on a trusted LAN.
+      # If you set it, enter the same value under Sync settings in the
+      # page. It guards the slot, not the contents — the blob is already
+      # useless without your master password.
+      KEYRING_TOKEN: ""
+      KEYRING_KEEP: "10"
+      # Starts as root only long enough to take ownership of the data
+      # volume (Docker creates named volumes root-owned), then drops to
+      # this uid:gid before serving a single request.
+      KEYRING_UID: "1000:1000"
+    expose:
+      - "8080"
+    networks:
+      - keyring
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:8080/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+networks:
+  keyring:
+
+volumes:
+  keyring_caddy_data:
+  keyring_caddy_config:
+  keyring_vault:

@@ -1,0 +1,35 @@
+# Replace 10.0.0.20 with this host's LAN address if it differs.
+# It appears twice: once in default_sni, once in the site address.
+{
+	# A browser never sends SNI when the URL is a bare IP address, and
+	# behind Docker's NAT Caddy sees the container's internal address as
+	# the local one - so it cannot work out which certificate to present
+	# and aborts the handshake with "internal error". Naming the site
+	# here gives the no-SNI lookup something to find.
+	default_sni 10.0.0.20
+}
+
+https://10.0.0.20:8121 {
+	# Caddy mints its own certificate. The browser warns once per machine;
+	# after that the origin is secure, which is what WebCrypto needs.
+	tls internal
+
+	header {
+		# The page loads nothing from anywhere and talks only to /api.
+		Content-Security-Policy "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'"
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+
+	handle /api/* {
+		reverse_proxy keyring-sync:8080
+	}
+
+	handle {
+		root * /srv
+		file_server {
+			index keyring.html
+		}
+	}
+}
